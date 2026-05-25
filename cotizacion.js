@@ -96,7 +96,7 @@ function nuevaProforma() {
       telefono: '',
     },
     items: [
-      { id: Date.now() + 1, cantidad: '', detalle: '', nota: '', vrUnit: '', total: 0 },
+      { id: Date.now() + 1, cantidad: '', detalle: '', nota: '', vrUnit: '', total: 0, conIva: true },
     ],
     notas: ['', '', ''],
     solicitud: 'Orden de Compra.',
@@ -328,7 +328,7 @@ function recalcularTotales(p) {
 
 function actualizarTotalesDOM(p) {
   const subtotal = p.items.reduce((s, i) => s + (i.total || 0), 0);
-  const iva = subtotal * 0.19;
+  const iva = p.items.reduce((s, i) => s + (i.conIva !== false ? (i.total || 0) * 0.19 : 0), 0);
   const total = subtotal + iva;
   const elSub = document.getElementById('val-subtotal');
   const elIva = document.getElementById('val-iva');
@@ -343,7 +343,7 @@ function agregarItem(pid) {
   const p = proformas.find((x) => x.id === pid);
   if (!p) return;
   const newId = Date.now();
-  p.items.push({ id: newId, cantidad: '', detalle: '', nota: '', vrUnit: '', total: 0 });
+  p.items.push({ id: newId, cantidad: '', detalle: '', nota: '', vrUnit: '', total: 0, conIva: true });
   guardar();
 
   const tbody = document.getElementById('tbody-items');
@@ -399,6 +399,9 @@ function htmlFilaItem(pid, item, idx) {
       <input type="number" value="${item.vrUnit}" min="0"
         oninput="updateItem(${pid},${item.id},'vrUnit',this.value)"
         placeholder="0">
+      <label style="font-size:10px; color:#888; display:flex; align-items:center; gap:3px; margin-top:4px;">
+        <input type="checkbox" ${item.conIva !== false ? 'checked' : ''} onchange="updateItem(${pid},${item.id},'conIva',this.checked)" style="width:auto; padding:0; background:none;"> Con IVA
+      </label>
     </td>
     <td class="col-total">${formatCOP(item.total)}</td>
     <td class="col-del">
@@ -417,7 +420,8 @@ function renderSidebar() {
   list.innerHTML = proformas
     .map((p) => {
       const subtotal = p.items.reduce((s, i) => s + (i.total || 0), 0);
-      const total = subtotal * 1.19;
+      const iva = p.items.reduce((s, i) => s + (i.conIva !== false ? (i.total || 0) * 0.19 : 0), 0);
+      const total = subtotal + iva;
       const badge =
         p.estado === 'finalizado'
           ? '<span class="badge badge-finalizado">Finalizado</span>'
@@ -442,7 +446,7 @@ function renderFormulario(p) {
   const main = document.getElementById('mainContent');
   const readonly = p.estado === 'finalizado';
   const subtotal = p.items.reduce((s, i) => s + (i.total || 0), 0);
-  const iva = subtotal * 0.19;
+  const iva = p.items.reduce((s, i) => s + (i.conIva !== false ? (i.total || 0) * 0.19 : 0), 0);
   const total = subtotal + iva;
 
   main.innerHTML = `
@@ -680,7 +684,7 @@ function mostrarEstadoVacio() {
 // ── Generar HTML de la proforma para PDF/impresión ────────────────────────────
 function generarHTMLProforma(p) {
   const subtotal = p.items.reduce((s, i) => s + (i.total || 0), 0);
-  const iva = subtotal * 0.19;
+  const iva = p.items.reduce((s, i) => s + (i.conIva !== false ? (i.total || 0) * 0.19 : 0), 0);
   const total = subtotal + iva;
 
   const filas = p.items
@@ -712,18 +716,18 @@ function generarHTMLProforma(p) {
     <div style="font-family:'Georgia',serif;max-width:760px;margin:0 auto;padding:24px;color:#1a1a1a;background:#fff;">
 
       <!-- Encabezado -->
-      <table style="width:100%;margin-bottom:20px;">
+      <table style="width:100%;margin-bottom:20px;border-collapse:collapse;">
         <tr>
-          <td style="width:100px;vertical-align:middle;">
+          <td style="width:110px;vertical-align:middle;">
             <img src="${LOGO_BASE64}" alt="Logo Arjona" style="width:90px;height:90px;border-radius:50%;object-fit:cover;display:block;">
           </td>
-          <td style="text-align:center;vertical-align:middle;">
-            <div style="font-size:20px;font-weight:bold;color:#185FA5;letter-spacing:0.05em;">ARJONA S.A.S</div>
-            <div style="font-size:11px;color:#555;margin-top:3px;">NIT 860046904-1</div>
-            <div style="font-size:11px;color:#555;">CALLE 63 BIS # 71 A 31</div>
-            <div style="font-size:11px;color:#555;">Tels 601 2510753  601 5657188</div>
-            <div style="font-size:11px;color:#185FA5;">info@jabonesarjona.com</div>
-            <div style="font-size:11px;color:#555;">Bogotá</div>
+          <td style="text-align:center;vertical-align:middle;padding:0 20px;">
+            <div style="font-size:22px;font-weight:bold;color:#185FA5;letter-spacing:0.05em;margin-bottom:5px;">ARJONA S.A.S</div>
+            <div style="font-size:11px;color:#555;margin-top:2px;">NIT 860046904-1</div>
+            <div style="font-size:11px;color:#555;margin-top:2px;">CALLE 63 BIS # 71 A 31</div>
+            <div style="font-size:11px;color:#555;margin-top:2px;">Tels 601 2510753 &nbsp; 601 5657188</div>
+            <div style="font-size:11px;color:#185FA5;margin-top:2px;">info@jabonesarjona.com</div>
+            <div style="font-size:11px;color:#555;margin-top:2px;">Bogotá</div>
           </td>
           <td style="text-align:right;vertical-align:middle;min-width:160px;">
             <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.05em;">${p.tipoDocumento || 'Proforma'} No.</div>
@@ -803,7 +807,7 @@ function generarHTMLProforma(p) {
               </tr>
               <tr>
                 <td colspan="2" style="padding:0;">
-                  <div style="background:#FAC775;color:#412402;font-size:17px;font-weight:bold;
+                  <div style="background:#87CEEB;color:#0C447C;font-size:17px;font-weight:bold;
                     text-align:right;padding:8px 12px;border-radius:6px;margin-top:4px;">
                     ${formatCOP(total)}
                   </div>
