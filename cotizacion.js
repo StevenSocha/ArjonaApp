@@ -17,24 +17,39 @@ const LOGO_BASE64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkG
 // ── Estado global ─────────────────────────────────────────────────────────────
 let proformas = [];
 let proformaActual = null;
-let contador = 1;
+let contadores = {
+  'Proforma': 0,
+  'Cotización': 0,
+  'Orden de compra': 0
+};
 
 // ── Persistencia (localStorage) ───────────────────────────────────────────────
 function guardar() {
   localStorage.setItem('arjona_proformas', JSON.stringify(proformas));
-  localStorage.setItem('arjona_contador', String(contador));
+  localStorage.setItem('arjona_contadores', JSON.stringify(contadores));
 }
 
 function cargar() {
   try {
     const p = localStorage.getItem('arjona_proformas');
-    const c = localStorage.getItem('arjona_contador');
+    const c = localStorage.getItem('arjona_contadores');
     if (p) proformas = JSON.parse(p);
-    if (c) contador = parseInt(c) || 1;
+    if (c) {
+      contadores = JSON.parse(c);
+    } else {
+      contadores = { 'Proforma': 0, 'Cotización': 0, 'Orden de compra': 0 };
+    }
   } catch (e) {
     proformas = [];
-    contador = 1;
+    contadores = { 'Proforma': 0, 'Cotización': 0, 'Orden de compra': 0 };
   }
+}
+
+function reiniciarContadores() {
+  if (!confirm('¿Seguro que deseas reiniciar todos los contadores a 0? (Tus documentos actuales no se borrarán)')) return;
+  contadores = { 'Proforma': 0, 'Cotización': 0, 'Orden de compra': 0 };
+  guardar();
+  alert('¡Contadores reiniciados a 0 exitosamente!');
 }
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -50,17 +65,25 @@ function fechaHoy() {
   });
 }
 
-function generarNumero() {
-  const num = String(contador).padStart(3, '0');
-  contador++;
-  return '555-' + num;
+function generarNumero(tipo = 'Proforma') {
+  const fecha = new Date();
+  const dia = fecha.getDate();
+  const mes = fecha.toLocaleDateString('es-CO', { month: 'long' });
+  
+  if (contadores[tipo] === undefined) {
+    contadores[tipo] = 0;
+  }
+  
+  const num = String(contadores[tipo]).padStart(3, '0');
+  contadores[tipo]++;
+  return `${dia} ${mes} - ${num}`;
 }
 
 // ── Crear nueva proforma ──────────────────────────────────────────────────────
 function nuevaProforma() {
   const p = {
     id: Date.now(),
-    numero: generarNumero(),
+    numero: generarNumero('Proforma'),
     tipoDocumento: 'Proforma',
     fecha: fechaHoy(),
     estado: 'borrador', // 'borrador' | 'finalizado'
@@ -113,8 +136,38 @@ function finalizarProforma(id) {
 }
 
 // ── Eliminar proforma ─────────────────────────────────────────────────────────
+
+function retrocederContadorSiAplica(aEliminar) {
+  const porTipo = {};
+  for (const p of aEliminar) {
+    const tipo = p.tipoDocumento || 'Proforma';
+    if (!porTipo[tipo]) porTipo[tipo] = [];
+    porTipo[tipo].push(p);
+  }
+
+  for (const tipo in porTipo) {
+    const ordenados = porTipo[tipo].sort((a, b) => {
+      const numA = parseInt(a.numero.split('-').pop().trim(), 10) || 0;
+      const numB = parseInt(b.numero.split('-').pop().trim(), 10) || 0;
+      return numB - numA;
+    });
+
+    for (const p of ordenados) {
+      const numPart = p.numero.split('-').pop().trim();
+      const consecutivo = parseInt(numPart, 10) || 0;
+      if (consecutivo === contadores[tipo] - 1 && contadores[tipo] > 0) {
+        contadores[tipo]--;
+      }
+    }
+  }
+}
+
 function eliminarProforma(id) {
   if (!confirm('¿Eliminar esta proforma del historial?')) return;
+  
+  const p = proformas.find((x) => x.id === id);
+  if (p) retrocederContadorSiAplica([p]);
+  
   proformas = proformas.filter((x) => x.id !== id);
   proformaActual = null;
   guardar();
@@ -131,6 +184,9 @@ function eliminarProformasSeleccionadas() {
   if (!confirm('¿Eliminar las proformas seleccionadas del historial?')) return;
   
   const ids = Array.from(checkboxes).map(chk => parseInt(chk.dataset.id));
+  const aEliminar = proformas.filter(x => ids.includes(x.id));
+  retrocederContadorSiAplica(aEliminar);
+  
   proformas = proformas.filter((x) => !ids.includes(x.id));
   
   if (proformaActual && ids.includes(proformaActual)) {
@@ -147,6 +203,9 @@ function eliminarProformasSeleccionadas() {
 function eliminarTodasProformas() {
   if (proformas.length === 0) return;
   if (!confirm('¿Estás seguro de que deseas eliminar TODAS las proformas del sistema? Esta acción no se puede deshacer.')) return;
+  
+  retrocederContadorSiAplica(proformas);
+  
   proformas = [];
   proformaActual = null;
   guardar();
@@ -174,7 +233,16 @@ function updateCampo(id, campo, val) {
 function updateTipoDocumento(id, val) {
   const p = proformas.find((x) => x.id === id);
   if (!p) return;
-  p.tipoDocumento = val;
+  
+  const tipoAnterior = p.tipoDocumento || 'Proforma';
+  if (tipoAnterior !== val) {
+    retrocederContadorSiAplica([p]);
+    p.tipoDocumento = val;
+    p.numero = generarNumero(val);
+  } else {
+    p.tipoDocumento = val;
+  }
+  
   guardar();
   renderSidebar();
   renderFormulario(p);
